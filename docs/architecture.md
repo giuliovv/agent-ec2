@@ -12,8 +12,8 @@
 - Tracks lease state machine.
 
 3. `billing` integration
-- Stripe Payment Links or Checkout Session.
-- Webhook confirmation drives state transition to `PAID`.
+- Stripe Link CLI spend-request flow (`--request-approval`).
+- Terminal spend-request state (`approved`/`denied`/`expired`) drives lease transition.
 
 4. `runner` on EC2
 - Bootstraps via user-data.

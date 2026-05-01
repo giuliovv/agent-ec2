@@ -16,7 +16,7 @@ Agents run lightweight locally. When heavy compute is needed, they request a sho
 ## Initial Scope (MVP)
 
 - AWS EC2 only
-- Stripe Payment Links + webhook-based activation
+- Stripe Link CLI spend-request + user approval activation
 - One region, small fixed instance catalog
 - Script/batch execution with stdout/stderr capture
 - Hard runtime cap and kill switch

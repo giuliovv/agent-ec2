@@ -1,26 +1,78 @@
-# Billing Notes: "Link CLI" Clarification
+# Billing With Stripe Link CLI (Agent-first)
 
-## What "Link" likely refers to
+This project should use Stripe Link CLI as the primary payment-approval mechanism for agent-triggered compute.
 
-Online check suggests this is most likely **Stripe Link** (one-click checkout method), used via Stripe Checkout/Payment Links.
+## What Link CLI provides
 
-- Link is a checkout capability, not a standalone separate CLI product.
-- You can still use **Stripe CLI** for local webhook testing and event forwarding.
+- Agent can request spend credentials without storing user card details.
+- User approves each purchase in Link (push/email flow).
+- Approved request returns one-time-use credential data.
+- Supports MPP (`HTTP 402`) merchants via `shared_payment_token`.
 
-## Recommended MVP Billing Flow
+## Core Commands
 
-1. Backend creates Stripe Payment Link (or Checkout Session).
-2. Agent/user receives approval URL.
-3. User pays.
-4. Stripe webhook (`checkout.session.completed` or relevant payment event) marks lease as `PAID`.
-5. Orchestrator provisions EC2 and starts lease timer.
+Install:
+```bash
+npm i -g @stripe/link-cli
+# or
+npx @stripe/link-cli
+```
 
-## Why this works for agents
+Auth:
+```bash
+link-cli auth login --client-name "Agent EC2"
+link-cli auth status --format json
+```
 
-- Human-in-the-loop consent before spend.
-- Familiar card/bank payment UX.
-- Strong webhook model for activation.
+List payment methods:
+```bash
+link-cli payment-methods list --format json
+```
 
-## Follow-up to confirm
+Create spend request (with approval):
+```bash
+link-cli spend-request create \
+  --payment-method-id csmrpd_xxx \
+  --merchant-name "Agent EC2 Compute" \
+  --merchant-url "https://agent-ec2.example" \
+  --context "Provisioning a 60-minute compute lease for requested agent job." \
+  --amount 500 \
+  --line-item "name:EC2 lease (60m),unit_amount:500,quantity:1" \
+  --total "type:total,display_text:Total,amount:500" \
+  --request-approval \
+  --format json
+```
 
-If you meant another "Link CLI" product, we should pin the exact vendor/tool name and swap this module.
+Poll terminal state:
+```bash
+link-cli spend-request retrieve lsrq_001 \
+  --interval 2 --max-attempts 150 --format json
+```
+
+## Integration Pattern for This Service
+
+1. Orchestrator receives lease request.
+2. Orchestrator creates Link spend request (`--request-approval`).
+3. Service waits for terminal status (`approved` / `denied` / `expired`).
+4. If approved, provision EC2 and start TTL lease.
+5. If denied/expired, mark lease terminal and do not provision.
+
+## MCP Option
+
+Link CLI can run as local MCP server:
+```json
+{
+  "mcpServers": {
+    "link": {
+      "command": "npx",
+      "args": ["@stripe/link-cli", "--mcp"]
+    }
+  }
+}
+```
+
+## Notes
+
+- Keep raw card credential material out of logs.
+- Treat spend requests as auditable objects tied to lease IDs.
+- Include explicit human-readable context so user knows what they are approving.
