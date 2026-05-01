@@ -1,25 +1,57 @@
-# Agent Burst Compute Service
+# Agent Burst Compute Service (MVP)
 
-Temporary EC2 compute leasing for remote agents (e.g., Codex on Raspberry Pi).
+Temporary EC2 compute leasing for remote agents (e.g., Codex on Raspberry Pi), with payment-gated activation.
 
-## Idea
+## MVP Scope
 
-Agents run lightweight locally. When heavy compute is needed, they request a short-lived EC2 runtime (for example, 15-120 minutes). The end-user receives a payment/approval link. After payment, the job is executed on provisioned compute, logs/results are returned, and the instance is terminated automatically.
+- FastAPI backend with lease state machine
+- HTTP `402 Payment Required` on unpaid lease creation
+- Stripe Link CLI / MPP-compatible payment contract (`shared_payment_token`)
+- Simulated payment endpoint for local development
+- Static frontend (cheap hosting via S3 + CloudFront)
 
-## Core Goals
+## Project Layout
 
-- Fast provisioning of ephemeral compute
-- HTTP 402-native payment gating for lease activation
-- Optional user approval mode plus unattended autopay mode
-- Strict TTL auto-shutdown to cap spend
-- Agent-friendly API (simple request/lease/execute lifecycle)
+- `services/api/` backend API
+- `frontend/` static demo UI
+- `infra/cloudfront/` simple deploy helper
+- `docs/` architecture + payment/API docs
 
-## Initial Scope (MVP)
+## Run Backend Locally
 
-- AWS EC2 only
-- Stripe Link CLI spend-request + user approval activation
-- One region, small fixed instance catalog
-- Script/batch execution with stdout/stderr capture
-- Hard runtime cap and kill switch
+```bash
+cd services/api
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8080
+```
 
-See `docs/` for architecture and API design.
+Health check:
+```bash
+curl http://localhost:8080/healthz
+```
+
+## Try the Flow
+
+1. Open `frontend/index.html` in browser.
+2. Set API base URL (default `http://localhost:8080`).
+3. Create lease -> observe `402` + payment metadata.
+4. Simulate payment (`POST /v1/pay/{lease_id}`).
+5. Submit job.
+
+## Cheap Frontend Hosting (S3 + CloudFront)
+
+Sync static files to S3:
+```bash
+infra/cloudfront/deploy_frontend.sh <bucket-name> us-east-1
+```
+
+Then create a CloudFront distribution with the S3 bucket as origin.
+
+## Next Steps
+
+- Replace `/v1/pay/{lease_id}` stub with real Link CLI + MPP handler
+- Add persistent DB (DynamoDB/Postgres)
+- Add real EC2 provisioning + TTL terminator
+- Add auth, quotas, and spend limits
