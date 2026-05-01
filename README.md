@@ -9,7 +9,8 @@ Agents run lightweight locally. When heavy compute is needed, they request a sho
 ## Core Goals
 
 - Fast provisioning of ephemeral compute
-- Clear user approval and payment before cost is incurred
+- HTTP 402-native payment gating for lease activation
+- Optional user approval mode plus unattended autopay mode
 - Strict TTL auto-shutdown to cap spend
 - Agent-friendly API (simple request/lease/execute lifecycle)
 

@@ -1,65 +1,63 @@
-# Billing With Stripe Link CLI (Agent-first)
+# Billing With Stripe Link CLI + HTTP 402 (Agentic Pattern)
 
-This project should use Stripe Link CLI as the primary payment-approval mechanism for agent-triggered compute.
+## Verified capabilities (from `stripe/link-cli`)
 
-## What Link CLI provides
+- One-time-use payment credentials from Link wallet.
+- Optional human approval via `--request-approval`.
+- MPP/HTTP-402 support via `shared_payment_token`.
+- Direct MPP payment helper: `link-cli mpp pay ...`.
+- Works via `npx` (minimal install footprint).
 
-- Agent can request spend credentials without storing user card details.
-- User approves each purchase in Link (push/email flow).
-- Approved request returns one-time-use credential data.
-- Supports MPP (`HTTP 402`) merchants via `shared_payment_token`.
+## Minimal-install client pattern
 
-## Core Commands
-
-Install:
+No global install required:
 ```bash
-npm i -g @stripe/link-cli
-# or
-npx @stripe/link-cli
+npx @stripe/link-cli auth login --client-name "Agent EC2"
+npx @stripe/link-cli payment-methods list --format json
 ```
 
-Auth:
+For MPP/402 merchants:
 ```bash
-link-cli auth login --client-name "Agent EC2"
-link-cli auth status --format json
-```
-
-List payment methods:
-```bash
-link-cli payment-methods list --format json
-```
-
-Create spend request (with approval):
-```bash
-link-cli spend-request create \
+npx @stripe/link-cli spend-request create \
   --payment-method-id csmrpd_xxx \
   --merchant-name "Agent EC2 Compute" \
   --merchant-url "https://agent-ec2.example" \
-  --context "Provisioning a 60-minute compute lease for requested agent job." \
+  --context "Lease compute for agent job" \
   --amount 500 \
   --line-item "name:EC2 lease (60m),unit_amount:500,quantity:1" \
   --total "type:total,display_text:Total,amount:500" \
-  --request-approval \
+  --credential-type "shared_payment_token" \
   --format json
 ```
 
-Poll terminal state:
+Then pay the HTTP-402 endpoint:
 ```bash
-link-cli spend-request retrieve lsrq_001 \
-  --interval 2 --max-attempts 150 --format json
+npx @stripe/link-cli mpp pay https://api.agent-ec2.example/v1/pay/lease_123 \
+  --spend-request-id lsrq_001 \
+  --method POST \
+  --data '{}' \
+  --format json
 ```
 
-## Integration Pattern for This Service
+## Two operating modes
 
-1. Orchestrator receives lease request.
-2. Orchestrator creates Link spend request (`--request-approval`).
-3. Service waits for terminal status (`approved` / `denied` / `expired`).
-4. If approved, provision EC2 and start TTL lease.
-5. If denied/expired, mark lease terminal and do not provision.
+1. Interactive approval mode (safer default)
+- Include `--request-approval`.
+- User approves each spend request via Link app/email.
 
-## MCP Option
+2. Unattended mode (your requested UX)
+- Do not require per-request approval.
+- Agent uses pre-authenticated Link account and policy-scoped payment method.
+- Still enforce server-side spend controls (caps, quotas, lease TTL).
 
-Link CLI can run as local MCP server:
+## Important product constraint
+
+Link CLI still requires an initial Link account authentication/binding step.
+"No user involvement" can mean no per-transaction prompts after setup, but not zero trust/bootstrap setup.
+
+## MCP option
+
+If agent runtime already supports MCP:
 ```json
 {
   "mcpServers": {
@@ -71,8 +69,10 @@ Link CLI can run as local MCP server:
 }
 ```
 
-## Notes
+## Recommendation for this project
 
-- Keep raw card credential material out of logs.
-- Treat spend requests as auditable objects tied to lease IDs.
-- Include explicit human-readable context so user knows what they are approving.
+- Use HTTP 402 as canonical server response when lease is unpaid.
+- Prefer MPP (`shared_payment_token`) for API-native flow.
+- Support both modes:
+  - `approval_required=true` for human-in-loop customers
+  - `approval_required=false` for pre-authorized autonomous agents
